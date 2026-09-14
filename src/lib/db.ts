@@ -1,5 +1,11 @@
 import * as SQLite from "expo-sqlite";
+import { addDaysISO, todayISO } from "./dates";
+import { collectMissedDays, MissedDay } from "./rollover";
 import { LogStatus, Prayer, PRAYERS } from "./types";
+
+// Date helpers grew into their own module; re-export the one everyone imports
+// from here so call sites don't churn.
+export { todayISO };
 
 const db = SQLite.openDatabaseSync("salahbond.db");
 
@@ -29,13 +35,6 @@ export function initDb() {
   if (!getMeta("install_date")) {
     setMeta("install_date", todayISO());
   }
-}
-
-export function todayISO(d: Date = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 export function getMeta(key: string): string | null {
@@ -125,27 +124,27 @@ export function payQadha(prayer: Prayer): boolean {
 }
 
 /**
- * Move unlogged prayers from fully-elapsed past days into the qadha bank.
- * Runs at most once per day; never counts days before install.
+ * The fully-elapsed days that haven't been rolled into the qadha bank yet.
+ * (The old implementation parsed ISO dates with `new Date(iso)` — UTC — which
+ * shifted the cursor back a day in western timezones and double-counted the
+ * last processed day. collectMissedDays stays in local dates throughout.)
  */
-export function rolloverMissedDays() {
-  const install = getMeta("install_date")!;
-  const last = getMeta("last_rollover") ?? install;
-  const today = todayISO();
+export function getPendingRollover(): MissedDay[] {
+  return collectMissedDays({
+    installDate: getMeta("install_date")!,
+    lastRollover: getMeta("last_rollover"),
+    today: todayISO(),
+    getLogs: getLogsForDate,
+  });
+}
 
-  const start = new Date(Math.max(+new Date(last), +new Date(install)));
-  const cursor = new Date(start);
-  cursor.setDate(cursor.getDate() + 1); // first unprocessed day
-
-  while (todayISO(cursor) < today) {
-    const date = todayISO(cursor);
-    const logs = getLogsForDate(date);
-    for (const p of PRAYERS) {
-      if (!logs[p]) adjustQadha(p, 1);
-    }
-    cursor.setDate(cursor.getDate() + 1);
+/**
+ * Close out the pending days: bank their missed prayers as qadha, or — when
+ * the user chooses a fresh start after time away — just mark them processed.
+ */
+export function applyRollover(days: MissedDay[], countQadha: boolean) {
+  if (countQadha) {
+    for (const d of days) for (const p of d.missed) adjustQadha(p, 1);
   }
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  setMeta("last_rollover", todayISO(yesterday));
+  setMeta("last_rollover", addDaysISO(todayISO(), -1));
 }

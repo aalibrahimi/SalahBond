@@ -63,7 +63,7 @@ export const useApp = create<AppState>((set, get) => ({
   init: async () => {
     try {
       db.initDb();
-      db.rolloverMissedDays();
+      db.applyRollover(db.getPendingRollover(), true);
 
       // Resolve location: saved -> GPS -> fallback city.
       let loc: Loc | null = null;
