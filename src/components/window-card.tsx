@@ -4,7 +4,7 @@ import { MotiView } from "moti";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { Button } from "@/components/ui/button";
-import { fmtClock } from "@/lib/prayer-times";
+import { fmtClock, fmtRelative } from "@/lib/prayer-times";
 import {
   LogStatus,
   Prayer,
@@ -78,6 +78,14 @@ export function WindowCard({
           </View>
           <Text className="mt-0.5 text-sm text-muted">
             {fmtClock(w.start)} – {fmtClock(w.end)}
+            {state === "open" && (
+              <Text className="text-primary">
+                {"  ·  "}{fmtRelative(+w.end - +now)} left
+              </Text>
+            )}
+            {state === "upcoming" && (
+              <Text>{"  ·  "}in {fmtRelative(+w.start - +now)}</Text>
+            )}
           </Text>
         </View>
         <Text className="font-arabic text-xl text-primary/90">
@@ -132,7 +140,7 @@ export function WindowCard({
 
       {state === "missed" && (
         <Text className="mt-3 text-xs text-muted">
-          Window passed — unlogged prayers move to your qadha bank at day's end.
+          Window passed — unlogged prayers move to your qadha bank at day’s end.
           No guilt; just make them up. 🤍
         </Text>
       )}

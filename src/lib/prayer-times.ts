@@ -76,10 +76,38 @@ export async function fetchDayTimes(
   return { dateISO, windows, display: t, hijri };
 }
 
+/** 5:34 AM — always 12-hour, always the device's local time. */
 export function fmtClock(d: Date): string {
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  let h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${h}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
+/** "05:34 (PDT)" from the API → "5:34 AM" on the given local day. */
+export function fmtApiTime(dateISO: string, raw: string | undefined): string {
+  if (!raw) return "—";
+  return fmtClock(parseTime(dateISO, raw));
+}
+
+/**
+ * Humanized remaining time — reads like a person, not a stopwatch:
+ * "2h 14m", "48 min", "under a minute", "now".
+ */
+export function fmtRelative(ms: number): string {
+  if (ms <= 0) return "now";
+  const totalMin = Math.ceil(ms / 60_000);
+  if (totalMin < 1) return "under a minute";
+  if (totalMin < 60) return `${totalMin} min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h < 24) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
+}
+
+/** Legacy stopwatch format — kept for anything that still wants digits. */
 export function fmtCountdown(ms: number): string {
   if (ms < 0) ms = 0;
   const totalSec = Math.floor(ms / 1000);

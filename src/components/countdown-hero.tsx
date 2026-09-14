@@ -1,9 +1,10 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { MotiView } from "moti";
+import { MotiText, MotiView } from "moti";
 import React, { useEffect, useState } from "react";
 import { Text, View } from "react-native";
-import { fmtClock, fmtCountdown, windowStateAt } from "@/lib/prayer-times";
-import { DayTimes, Prayer, WindowKey } from "@/lib/types";
+import { PrayerWheel } from "@/components/progress";
+import { fmtClock, fmtRelative, windowStateAt } from "@/lib/prayer-times";
+import { DayTimes, Prayer, PRAYERS, WindowKey } from "@/lib/types";
 
 const GRADIENTS: Record<WindowKey | "night", [string, string, string]> = {
   fajr: ["#1E1B4B", "#28275F", "#0A0F1E"],
@@ -23,55 +24,51 @@ export function CountdownHero({
   logs: Partial<Record<Prayer, string>>;
   location: string;
 }) {
+  // Humanized times only need minute resolution.
   const [now, setNow] = useState(new Date());
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
+    const id = setInterval(() => setNow(new Date()), 10_000);
     return () => clearInterval(id);
   }, []);
 
   const state = windowStateAt(now, day);
 
   let gradient = GRADIENTS.night;
+  let eyebrow = "";
   let headline = "";
-  let sub = "";
-  let countdown = "";
-  let countdownLabel = "";
+  let detail = "";
 
-  const openAllLogged =
-    state.open && state.open.prayers.every((p) => logs[p]);
+  const openAllLogged = state.open && state.open.prayers.every((p) => logs[p]);
 
   if (state.open && !openAllLogged) {
     gradient = GRADIENTS[state.open.key];
+    eyebrow = "Open now";
     headline = state.open.label;
-    sub = "The window is open — pray now";
-    countdown = fmtCountdown(+state.open.end - +now);
-    countdownLabel = `closes at ${fmtClock(state.open.end)}`;
+    detail = `${fmtRelative(+state.open.end - +now)} left · closes ${fmtClock(state.open.end)}`;
   } else if (state.open && openAllLogged) {
     gradient = GRADIENTS[state.open.key];
+    eyebrow = "Taqabbal Allah";
     headline = `${state.open.label} ✓`;
-    sub = "Taqabbal Allah — prayer logged";
-    const upcoming = state.next ?? null;
-    if (upcoming) {
-      countdown = fmtCountdown(+upcoming.start - +now);
-      countdownLabel = `${upcoming.label} at ${fmtClock(upcoming.start)}`;
-    } else {
-      countdown = "🌙";
-      countdownLabel = "Rest well — Fajr comes with the dawn";
+    if (state.next) {
+      detail = `${state.next.label} in ${fmtRelative(+state.next.start - +now)} · ${fmtClock(state.next.start)}`;
+    } else if (tomorrow) {
+      detail = `Fajr tomorrow at ${fmtClock(tomorrow.windows[0].start)} — rest well 🌙`;
     }
   } else if (state.next) {
     gradient = GRADIENTS[state.next.key];
-    headline = `Next: ${state.next.label}`;
-    sub = `begins at ${fmtClock(state.next.start)}`;
-    countdown = fmtCountdown(+state.next.start - +now);
-    countdownLabel = "until the call";
+    eyebrow = "Up next";
+    headline = state.next.label;
+    detail = `in ${fmtRelative(+state.next.start - +now)} · ${fmtClock(state.next.start)}`;
   } else if (tomorrow) {
     const fajr = tomorrow.windows[0];
     gradient = GRADIENTS.night;
-    headline = "Next: Fajr";
-    sub = `tomorrow at ${fmtClock(fajr.start)}`;
-    countdown = fmtCountdown(+fajr.start - +now);
-    countdownLabel = "until the dawn";
+    eyebrow = "Up next";
+    headline = "Fajr";
+    detail = `tomorrow at ${fmtClock(fajr.start)} · in ${fmtRelative(+fajr.start - +now)}`;
   }
+
+  const segments = PRAYERS.map((p) => !!logs[p] && logs[p] !== "qadha");
+  const prayed = segments.filter(Boolean).length;
 
   return (
     <MotiView
@@ -83,7 +80,7 @@ export function CountdownHero({
         colors={gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 0.8, y: 1 }}
-        style={{ borderRadius: 28, padding: 24 }}
+        style={{ borderRadius: 28, padding: 22 }}
       >
         <View className="flex-row items-center justify-between">
           <Text className="text-xs font-medium uppercase tracking-widest text-foreground/60">
@@ -94,18 +91,39 @@ export function CountdownHero({
           </Text>
         </View>
 
-        <Text className="mt-5 text-xl font-bold text-foreground">
-          {headline}
-        </Text>
-        <Text className="mt-1 text-sm text-foreground/70">{sub}</Text>
+        <View className="mt-5 flex-row items-center gap-5">
+          <View className="flex-1">
+            <Text className="text-xs font-bold uppercase tracking-widest text-primary">
+              {eyebrow}
+            </Text>
+            <MotiText
+              key={headline}
+              from={{ opacity: 0, translateY: 6 }}
+              animate={{ opacity: 1, translateY: 0 }}
+              transition={{ type: "timing", duration: 350 }}
+              className="mt-1 text-4xl font-bold tracking-tight text-foreground"
+            >
+              {headline}
+            </MotiText>
+            <Text className="mt-2 text-[15px] leading-6 text-foreground/75">
+              {detail}
+            </Text>
+          </View>
 
-        <Text
-          className="mt-3 text-6xl font-bold tracking-tight text-foreground"
-          style={{ fontVariant: ["tabular-nums"] }}
-        >
-          {countdown}
+          <PrayerWheel segments={segments} size={96} stroke={10}>
+            <Text
+              className="text-2xl font-bold text-foreground"
+              style={{ fontVariant: ["tabular-nums"] }}
+            >
+              {prayed}
+              <Text className="text-sm text-foreground/60">/5</Text>
+            </Text>
+          </PrayerWheel>
+        </View>
+
+        <Text className="mt-4 text-xs text-foreground/50">
+          {fmtClock(now)} · {prayed === 5 ? "All five, mashallah" : `${5 - prayed} to go today`}
         </Text>
-        <Text className="mt-1 text-sm text-foreground/60">{countdownLabel}</Text>
       </LinearGradient>
     </MotiView>
   );

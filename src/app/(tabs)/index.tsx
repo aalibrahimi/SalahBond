@@ -5,6 +5,7 @@ import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Celebration } from "@/components/celebration";
 import { CountdownHero } from "@/components/countdown-hero";
+import { FadeUp } from "@/components/progress";
 import { QuoteCard } from "@/components/quote-card";
 import { WindowCard } from "@/components/window-card";
 import { Card, Muted } from "@/components/ui/card";
@@ -47,7 +48,7 @@ export default function TodayScreen() {
     return (
       <View className="flex-1 items-center justify-center bg-background px-8">
         <Text className="text-center text-base text-foreground">
-          Couldn't load prayer times.
+          Couldn’t load prayer times.
         </Text>
         <Muted className="mt-2 text-center">
           {error ?? "Check your connection and reopen the app."}
@@ -107,6 +108,7 @@ export default function TodayScreen() {
         ))}
 
         {qadhaTotal > 0 && (
+          <FadeUp index={3}>
           <Link href="/qadha" asChild>
             <Card className="flex-row items-center justify-between border-primary/20 p-4">
               <Text className="text-sm text-foreground/90">
@@ -119,9 +121,12 @@ export default function TodayScreen() {
               </Text>
             </Card>
           </Link>
+          </FadeUp>
         )}
 
-        <QuoteCard quote={quote} />
+        <FadeUp index={4}>
+          <QuoteCard quote={quote} />
+        </FadeUp>
       </ScrollView>
 
       <Celebration visible={!!celebrating} onDismiss={dismissCelebration} />

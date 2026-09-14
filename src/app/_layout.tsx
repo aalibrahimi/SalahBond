@@ -1,3 +1,4 @@
+import "@/lib/polyfills";
 import "../global.css";
 
 import {
@@ -10,10 +11,15 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
-import { View } from "react-native";
+import { LogBox, View } from "react-native";
+import { useBuddies } from "@/lib/buddies";
 import { PRAYED_ACTION } from "@/lib/notifications";
 import { useApp } from "@/lib/store";
 import { WindowKey } from "@/lib/types";
+
+// moti imports react-native's deprecated SafeAreaView at module load
+// (moti/build/components/safe-area-view.js); nothing in src/ uses it.
+LogBox.ignoreLogs(["SafeAreaView has been deprecated"]);
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -25,6 +31,8 @@ export default function RootLayout() {
 
   useEffect(() => {
     init();
+    // Restore the brothers session early so today's count syncs from any tab.
+    useBuddies.getState().boot();
   }, [init]);
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 import * as Location from "expo-location";
 import { create } from "zustand";
+import { useBuddies } from "./buddies";
 import * as db from "./db";
 import { ensureNotificationSetup, scheduleDay } from "./notifications";
 import {
@@ -38,6 +39,11 @@ interface AppState {
   dismissCelebration: () => void;
 }
 
+/** Count of today's prayers that are logged (qadha entries never count). */
+function prayedCount(logs: Partial<Record<Prayer, LogStatus>>): number {
+  return Object.values(logs).filter((s) => s && s !== "qadha").length;
+}
+
 function statusFor(w: PrayerWindow): LogStatus {
   const now = new Date();
   return now >= w.start && now < w.end ? "ontime" : "delayed";
@@ -66,8 +72,9 @@ export const useApp = create<AppState>((set, get) => ({
       if (saved) {
         loc = JSON.parse(saved);
       } else {
-        const perm = await Location.requestForegroundPermissionsAsync();
-        if (perm.granted) {
+        try {
+          const perm = await Location.requestForegroundPermissionsAsync();
+          if (!perm.granted) throw new Error("location permission denied");
           const pos = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           });
@@ -83,7 +90,9 @@ export const useApp = create<AppState>((set, get) => ({
             label,
           };
           db.setMeta("location", JSON.stringify(loc));
-        } else {
+        } catch {
+          // No GPS fix or permission — fall back to the default city;
+          // the user can set theirs in More.
           loc = DEFAULT_LOCATION;
           fallback = true;
         }
@@ -131,7 +140,9 @@ export const useApp = create<AppState>((set, get) => ({
     const date = db.todayISO();
     const status = statusFor(w);
     for (const p of w.prayers) db.logPrayer(date, p, status);
-    set({ logs: db.getLogsForDate(date), celebrating: w.key });
+    const logs = db.getLogsForDate(date);
+    set({ logs, celebrating: w.key });
+    useBuddies.getState().syncToday(prayedCount(logs));
   },
 
   togglePrayer: (p, w) => {
@@ -142,7 +153,9 @@ export const useApp = create<AppState>((set, get) => ({
     } else {
       db.logPrayer(date, p, statusFor(w));
     }
-    set({ logs: db.getLogsForDate(date) });
+    const next = db.getLogsForDate(date);
+    set({ logs: next });
+    useBuddies.getState().syncToday(prayedCount(next));
   },
 
   logWindowByKey: (key, date) => {

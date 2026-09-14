@@ -4,6 +4,7 @@ import { MotiText } from "moti";
 import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { FadeUp, ProgressBar } from "@/components/progress";
 import { QuoteCard } from "@/components/quote-card";
 import { Button } from "@/components/ui/button";
 import { Card, Muted } from "@/components/ui/card";
@@ -16,6 +17,7 @@ export default function QadhaScreen() {
   const insets = useSafeAreaInsets();
   const { qadha, payQadha, adjustQadha } = useApp();
   const total = Object.values(qadha).reduce((a, b) => a + b, 0);
+  const maxOwed = Math.max(1, ...Object.values(qadha));
 
   return (
     <ScrollView
@@ -35,6 +37,7 @@ export default function QadhaScreen() {
         </Muted>
       </View>
 
+      <FadeUp index={0}>
       <Card className="items-center bg-card-elevated py-7">
         <MotiText
           key={total}
@@ -51,9 +54,11 @@ export default function QadhaScreen() {
             : `prayer${total === 1 ? "" : "s"} to make up`}
         </Muted>
       </Card>
+      </FadeUp>
 
-      {PRAYERS.map((p) => (
-        <Card key={p} className="flex-row items-center gap-3 p-4">
+      {PRAYERS.map((p, i) => (
+        <FadeUp key={p} index={i + 1}>
+        <Card className="flex-row items-center gap-3 p-4">
           <View className="w-24">
             <Text className="text-base font-bold text-foreground">
               {PRAYER_LABELS[p]}
@@ -61,6 +66,13 @@ export default function QadhaScreen() {
             <Text className="font-arabic text-base text-muted">
               {PRAYER_ARABIC[p]}
             </Text>
+            <ProgressBar
+              progress={qadha[p] / maxOwed}
+              height={5}
+              delay={60 * i}
+              color={qadha[p] === 0 ? "#34D399" : "#E5B45B"}
+              style={{ marginTop: 6, width: 72 }}
+            />
           </View>
 
           <View className="flex-row items-center gap-2">
@@ -100,14 +112,17 @@ export default function QadhaScreen() {
             onPress={() => payQadha(p)}
           />
         </Card>
+        </FadeUp>
       ))}
 
       <Muted className="px-1 text-xs">
         Use + / − to backfill prayers you owe from before you started tracking.
-        Tap "Prayed one" right after you finish a qadha prayer.
+        Tap “Prayed one” right after you finish a qadha prayer.
       </Muted>
 
-      <QuoteCard quote={mercyQuote(todayISO())} />
+      <FadeUp index={7}>
+        <QuoteCard quote={mercyQuote(todayISO())} />
+      </FadeUp>
     </ScrollView>
   );
 }
