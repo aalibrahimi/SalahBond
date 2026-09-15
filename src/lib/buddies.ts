@@ -1,6 +1,7 @@
 import { Session } from "@supabase/supabase-js";
 import { create } from "zustand";
 import { todayISO } from "./db";
+import { registerPushToken, unregisterPushToken } from "./push";
 import { supabase } from "./supabase";
 import { WindowKey } from "./types";
 
@@ -88,7 +89,10 @@ export const useBuddies = create<BuddyState>((set, get) => ({
       const { data } = await supabase.auth.getSession();
       set({ session: data.session, booted: true });
       supabase.auth.onAuthStateChange((_evt, session) => set({ session }));
-      if (data.session) await get().refresh();
+      if (data.session) {
+        await get().refresh();
+        registerPushToken(); // fire-and-forget
+      }
     } catch (e) {
       set({ booted: true, error: friendlyError(e) });
     }
@@ -112,6 +116,7 @@ export const useBuddies = create<BuddyState>((set, get) => ({
           .upsert({ id: data.user.id, display_name: name }, { onConflict: "id" });
       }
       await get().refresh();
+      registerPushToken(); // fire-and-forget
       return true;
     } catch (e) {
       set({ error: friendlyError(e) });
@@ -122,6 +127,7 @@ export const useBuddies = create<BuddyState>((set, get) => ({
   },
 
   signOut: async () => {
+    await unregisterPushToken();
     await supabase.auth.signOut();
     set({ session: null, profile: null, buddies: [], nudges: [], nudgedToday: {} });
   },

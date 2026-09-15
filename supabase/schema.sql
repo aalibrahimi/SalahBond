@@ -223,3 +223,26 @@ $$;
 
 grant execute on function public.add_buddy_by_code(text) to authenticated;
 grant execute on function public.buddy_overview(date) to authenticated;
+
+-- ============ push tokens ============
+-- Kept out of profiles on purpose: profiles are readable by every signed-in
+-- user, and a readable push token lets anyone spam that device through
+-- Expo's push API. Only the owner (and the service-role edge function,
+-- which bypasses RLS) can see a token.
+create table if not exists public.push_tokens (
+  user_id uuid primary key references public.profiles (id) on delete cascade,
+  token text not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.push_tokens enable row level security;
+
+drop policy if exists "own push token only" on public.push_tokens;
+create policy "own push token only"
+  on public.push_tokens for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Delivery: deploy the edge function and point a Database Webhook at it —
+-- Dashboard → Database → Webhooks → Create: table `nudges`, event INSERT,
+-- type "Supabase Edge Function", function `nudge-push`.
+-- Full setup steps live in supabase/README.md.
