@@ -2,6 +2,53 @@
 
 Impactful changes only; newest first.
 
+## 2026-09-14 — Reliability, push nudges, coming-back flow (v0.3.0)
+
+### Fixed: qadha double-counting (data bug)
+- `rolloverMissedDays` parsed ISO dates as UTC midnight, which lands on the
+  previous local day in US timezones — the last rolled-over day was processed
+  again on the next app open and missed prayers were double-banked. Date math
+  now lives in pure modules (`dates.ts`, `rollover.ts`) with regression tests.
+
+### Tests
+- First test suite: `bun test src` — 26 tests over the qadha rollover walk,
+  window-state boundaries (the Maghrib handoff, Islamic midnight past 00:00),
+  date arithmetic across DST/month/leap boundaries, and haversine distance.
+  Pure logic was extracted from `db.ts`/`prayer-times.ts` to make it testable
+  (`time-logic.ts`, re-exported so call sites didn't change).
+
+### Push notifications for nudges
+- A nudge now reaches the brother's phone instead of waiting for him to open
+  the tab: Expo push token stored in a new `push_tokens` table (owner-only
+  RLS — tokens deliberately kept out of the readable `profiles`), a
+  `nudge-push` edge function triggered by a Database Webhook on insert, and
+  dead-token cleanup. Setup steps in `supabase/README.md`; token registration
+  silently skips until `eas init` adds a project id.
+
+### Built for coming back, for real
+- **Welcome-back flow**: after 7+ days away, rollover pauses and a gentle
+  modal offers a choice — bank the missed prayers as qadha, or start fresh
+  from today. No guilt, no red numbers.
+- **First-run onboarding**: one calm screen explaining the three-window
+  model, one-tap logging, and the qadha bank.
+
+### Notifications
+- The "Prayed ✓" action now works from a cold start: the launching tap is
+  read via `getLastNotificationResponseAsync`, queued until times load, and
+  deduped persistently so a replayed response can't downgrade an on-time log.
+
+### Prayer core
+- **Travel prompt**: if the device is 100+ km from the saved coords, Today
+  offers a one-tap "Update times" (dismissible for the day).
+- **Week-ahead prefetch**: the next 7 days of times are cached after every
+  location resolve, so a stretch offline keeps working.
+
+### Small things
+- Real clipboard copy for the invite code (`expo-clipboard` — native module,
+  picked up by the next `expo run:ios`).
+- ESLint config committed; `bun.lock` is now the only lockfile
+  (`package-lock.json` removed).
+
 ## 2026-09-14 — Brothers go live, natural time, visible progress (v0.2.0)
 
 ### Brothers (buddy system)
