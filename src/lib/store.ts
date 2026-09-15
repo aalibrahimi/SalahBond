@@ -2,10 +2,12 @@ import * as Location from "expo-location";
 import { create } from "zustand";
 import { useBuddies } from "./buddies";
 import * as db from "./db";
+import { haversineKm } from "./geo";
 import { ensureNotificationSetup, scheduleDay } from "./notifications";
 import {
   DEFAULT_LOCATION,
   fetchDayTimes,
+  prefetchDays,
   tomorrowISO,
 } from "./prayer-times";
 import { totalMissed } from "./rollover";
@@ -44,9 +46,13 @@ interface AppState {
   drift: DriftState | null;
   /** A "Prayed ✓" tap that arrived before init finished. */
   queuedLog: { key: WindowKey; date: string } | null;
+  /** Set when the device looks far from the saved location (travel). */
+  locationSuggestion: { lat: number; lng: number; label: string } | null;
 
   init: () => Promise<void>;
   resolveDrift: (countQadha: boolean) => void;
+  acceptLocationSuggestion: () => Promise<void>;
+  dismissLocationSuggestion: () => void;
   setCity: (city: string, country: string) => Promise<void>;
   logWindow: (w: PrayerWindow) => void;
   togglePrayer: (p: Prayer, w: PrayerWindow) => void;
@@ -66,6 +72,50 @@ function statusFor(w: PrayerWindow): LogStatus {
   return now >= w.start && now < w.end ? "ontime" : "delayed";
 }
 
+/** How far from the saved spot counts as "you've traveled". */
+const TRAVEL_KM = 100;
+
+/**
+ * Quietly check whether the device has moved far from the saved location and
+ * suggest updating — never re-prompts for permission, never blocks init.
+ */
+async function checkTravel(
+  loc: Loc,
+  suggest: (s: { lat: number; lng: number; label: string }) => void
+) {
+  try {
+    if (loc.kind !== "coords") return;
+    if (db.getMeta("travel_prompt_dismissed") === db.todayISO()) return;
+    const perm = await Location.getForegroundPermissionsAsync();
+    if (!perm.granted) return;
+    const pos =
+      (await Location.getLastKnownPositionAsync()) ??
+      (await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      }));
+    if (!pos) return;
+    const km = haversineKm(
+      loc.lat,
+      loc.lng,
+      pos.coords.latitude,
+      pos.coords.longitude
+    );
+    if (km < TRAVEL_KM) return;
+    let label = "your current area";
+    try {
+      const places = await Location.reverseGeocodeAsync(pos.coords);
+      label = places[0]?.city ?? label;
+    } catch {}
+    suggest({
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      label,
+    });
+  } catch {
+    // Location is a nicety here; silence is fine.
+  }
+}
+
 export const useApp = create<AppState>((set, get) => ({
   ready: false,
   error: null,
@@ -78,6 +128,7 @@ export const useApp = create<AppState>((set, get) => ({
   celebrating: null,
   drift: null,
   queuedLog: null,
+  locationSuggestion: null,
 
   init: async () => {
     try {
@@ -154,6 +205,10 @@ export const useApp = create<AppState>((set, get) => ({
 
       const granted = await ensureNotificationSetup();
       if (granted) await scheduleDay(today);
+
+      // Background niceties — neither blocks the app nor surfaces errors.
+      prefetchDays(loc);
+      checkTravel(loc, (s) => set({ locationSuggestion: s }));
     } catch (e: any) {
       set({ error: e?.message ?? "Something went wrong", ready: true });
     }
@@ -164,10 +219,17 @@ export const useApp = create<AppState>((set, get) => ({
     set({ drift: null, qadha: db.getQadhaCounts() });
   },
 
-  setCity: async (city, country) => {
-    const loc: Loc = { kind: "city", city, country, label: city };
+  acceptLocationSuggestion: async () => {
+    const s = get().locationSuggestion;
+    if (!s) return;
+    const loc: Loc = { kind: "coords", lat: s.lat, lng: s.lng, label: s.label };
     db.setMeta("location", JSON.stringify(loc));
-    set({ location: loc, usingFallbackLocation: false, ready: false });
+    set({
+      locationSuggestion: null,
+      location: loc,
+      usingFallbackLocation: false,
+      ready: false,
+    });
     const [today, tomorrow] = await Promise.all([
       fetchDayTimes(db.todayISO(), loc),
       fetchDayTimes(tomorrowISO(), loc),
@@ -175,6 +237,31 @@ export const useApp = create<AppState>((set, get) => ({
     set({ today, tomorrow, ready: true });
     const granted = await ensureNotificationSetup();
     if (granted) await scheduleDay(today);
+    prefetchDays(loc);
+  },
+
+  dismissLocationSuggestion: () => {
+    db.setMeta("travel_prompt_dismissed", db.todayISO());
+    set({ locationSuggestion: null });
+  },
+
+  setCity: async (city, country) => {
+    const loc: Loc = { kind: "city", city, country, label: city };
+    db.setMeta("location", JSON.stringify(loc));
+    set({
+      location: loc,
+      usingFallbackLocation: false,
+      locationSuggestion: null,
+      ready: false,
+    });
+    const [today, tomorrow] = await Promise.all([
+      fetchDayTimes(db.todayISO(), loc),
+      fetchDayTimes(tomorrowISO(), loc),
+    ]);
+    set({ today, tomorrow, ready: true });
+    const granted = await ensureNotificationSetup();
+    if (granted) await scheduleDay(today);
+    prefetchDays(loc);
   },
 
   logWindow: (w) => {

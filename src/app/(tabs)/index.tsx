@@ -1,7 +1,13 @@
 import { Link } from "expo-router";
-import { MapPinOff } from "lucide-react-native";
+import { MapPin, MapPinOff, X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Celebration } from "@/components/celebration";
 import { CountdownHero } from "@/components/countdown-hero";
@@ -27,10 +33,13 @@ export default function TodayScreen() {
     usingFallbackLocation,
     celebrating,
     drift,
+    locationSuggestion,
     logWindow,
     togglePrayer,
     dismissCelebration,
     resolveDrift,
+    acceptLocationSuggestion,
+    dismissLocationSuggestion,
   } = useApp();
 
   const [now, setNow] = useState(new Date());
@@ -95,6 +104,26 @@ export default function TodayScreen() {
                 Set your city →
               </Link>
             </Text>
+          </Card>
+        )}
+
+        {locationSuggestion && (
+          <Card className="flex-row items-center gap-3 border-primary/30 bg-primary/10 p-4">
+            <MapPin size={18} color="#E5B45B" />
+            <Text className="flex-1 text-sm leading-5 text-foreground/90">
+              You seem to be near{" "}
+              <Text className="font-bold">{locationSuggestion.label}</Text> —
+              times are still for {location?.label}.{" "}
+              <Text
+                className="font-bold text-primary"
+                onPress={acceptLocationSuggestion}
+              >
+                Update times →
+              </Text>
+            </Text>
+            <Pressable hitSlop={10} onPress={dismissLocationSuggestion}>
+              <X size={16} color="#8494B4" />
+            </Pressable>
           </Card>
         )}
 

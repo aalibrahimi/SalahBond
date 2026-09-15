@@ -1,3 +1,4 @@
+import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "expo-router";
 import {
@@ -392,8 +393,7 @@ function InviteCard({ name, code }: { name: string; code: string }) {
   const copy = async () => {
     Haptics.selectionAsync();
     try {
-      // expo-clipboard isn't installed; the share sheet has "Copy" built in.
-      await Share.share({ message: code });
+      await Clipboard.setStringAsync(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {}
