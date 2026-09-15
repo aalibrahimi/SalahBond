@@ -48,11 +48,14 @@ interface AppState {
   queuedLog: { key: WindowKey; date: string } | null;
   /** Set when the device looks far from the saved location (travel). */
   locationSuggestion: { lat: number; lng: number; label: string } | null;
+  /** True on the very first run, until the explainer is dismissed. */
+  showOnboarding: boolean;
 
   init: () => Promise<void>;
   resolveDrift: (countQadha: boolean) => void;
   acceptLocationSuggestion: () => Promise<void>;
   dismissLocationSuggestion: () => void;
+  completeOnboarding: () => void;
   setCity: (city: string, country: string) => Promise<void>;
   logWindow: (w: PrayerWindow) => void;
   togglePrayer: (p: Prayer, w: PrayerWindow) => void;
@@ -129,6 +132,7 @@ export const useApp = create<AppState>((set, get) => ({
   drift: null,
   queuedLog: null,
   locationSuggestion: null,
+  showOnboarding: false,
 
   init: async () => {
     try {
@@ -192,6 +196,7 @@ export const useApp = create<AppState>((set, get) => ({
         logs: db.getLogsForDate(todayISO),
         qadha: db.getQadhaCounts(),
         drift,
+        showOnboarding: !db.getMeta("onboarded"),
         ready: true,
         error: null,
       });
@@ -243,6 +248,11 @@ export const useApp = create<AppState>((set, get) => ({
   dismissLocationSuggestion: () => {
     db.setMeta("travel_prompt_dismissed", db.todayISO());
     set({ locationSuggestion: null });
+  },
+
+  completeOnboarding: () => {
+    db.setMeta("onboarded", "1");
+    set({ showOnboarding: false });
   },
 
   setCity: async (city, country) => {

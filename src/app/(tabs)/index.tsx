@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Celebration } from "@/components/celebration";
 import { CountdownHero } from "@/components/countdown-hero";
+import { Onboarding } from "@/components/onboarding";
 import { FadeUp } from "@/components/progress";
 import { QuoteCard } from "@/components/quote-card";
 import { WelcomeBack } from "@/components/welcome-back";
@@ -34,12 +35,14 @@ export default function TodayScreen() {
     celebrating,
     drift,
     locationSuggestion,
+    showOnboarding,
     logWindow,
     togglePrayer,
     dismissCelebration,
     resolveDrift,
     acceptLocationSuggestion,
     dismissLocationSuggestion,
+    completeOnboarding,
   } = useApp();
 
   const [now, setNow] = useState(new Date());
@@ -161,8 +164,12 @@ export default function TodayScreen() {
         </FadeUp>
       </ScrollView>
 
-      <WelcomeBack drift={drift} onResolve={resolveDrift} />
-      <Celebration visible={!!celebrating && !drift} onDismiss={dismissCelebration} />
+      <Onboarding visible={showOnboarding} onDone={completeOnboarding} />
+      <WelcomeBack drift={showOnboarding ? null : drift} onResolve={resolveDrift} />
+      <Celebration
+        visible={!!celebrating && !drift && !showOnboarding}
+        onDismiss={dismissCelebration}
+      />
     </View>
   );
 }
