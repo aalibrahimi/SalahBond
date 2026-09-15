@@ -7,6 +7,7 @@ import { Celebration } from "@/components/celebration";
 import { CountdownHero } from "@/components/countdown-hero";
 import { FadeUp } from "@/components/progress";
 import { QuoteCard } from "@/components/quote-card";
+import { WelcomeBack } from "@/components/welcome-back";
 import { WindowCard } from "@/components/window-card";
 import { Card, Muted } from "@/components/ui/card";
 import { todayISO } from "@/lib/db";
@@ -25,9 +26,11 @@ export default function TodayScreen() {
     location,
     usingFallbackLocation,
     celebrating,
+    drift,
     logWindow,
     togglePrayer,
     dismissCelebration,
+    resolveDrift,
   } = useApp();
 
   const [now, setNow] = useState(new Date());
@@ -129,7 +132,8 @@ export default function TodayScreen() {
         </FadeUp>
       </ScrollView>
 
-      <Celebration visible={!!celebrating} onDismiss={dismissCelebration} />
+      <WelcomeBack drift={drift} onResolve={resolveDrift} />
+      <Celebration visible={!!celebrating && !drift} onDismiss={dismissCelebration} />
     </View>
   );
 }

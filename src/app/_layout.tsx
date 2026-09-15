@@ -10,9 +10,10 @@ import * as Notifications from "expo-notifications";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect } from "react";
 import { LogBox, View } from "react-native";
 import { useBuddies } from "@/lib/buddies";
+import * as db from "@/lib/db";
 import { PRAYED_ACTION } from "@/lib/notifications";
 import { useApp } from "@/lib/store";
 import { WindowKey } from "@/lib/types";
@@ -35,24 +36,41 @@ export default function RootLayout() {
     useBuddies.getState().boot();
   }, [init]);
 
-  useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const data = response.notification.request.content.data as {
-          window?: WindowKey;
-          date?: string;
-        };
-        if (
-          response.actionIdentifier === PRAYED_ACTION &&
-          data.window &&
-          data.date
-        ) {
-          logWindowByKey(data.window, data.date);
-        }
+  const handleResponse = useCallback(
+    (response: Notifications.NotificationResponse) => {
+      const data = response.notification.request.content.data as {
+        window?: WindowKey;
+        date?: string;
+      };
+      if (
+        response.actionIdentifier !== PRAYED_ACTION ||
+        !data.window ||
+        !data.date
+      ) {
+        return;
       }
-    );
+      // getLastNotificationResponseAsync replays the same response on later
+      // launches; a replay hours on would re-log "ontime" as "delayed".
+      // Dedupe by id, persisted across restarts (initDb ran synchronously in
+      // the mount effect above, so the meta table exists).
+      const id = `${response.notification.request.identifier}:${data.date}:${data.window}`;
+      if (db.getMeta("handled_notif") === id) return;
+      db.setMeta("handled_notif", id);
+      logWindowByKey(data.window, data.date);
+    },
+    [logWindowByKey]
+  );
+
+  useEffect(() => {
+    // Cold start: the tap that happened while the app was killed is only
+    // available via the last-response query, never the listener.
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) handleResponse(response);
+    });
+    const sub =
+      Notifications.addNotificationResponseReceivedListener(handleResponse);
     return () => sub.remove();
-  }, [logWindowByKey]);
+  }, [handleResponse]);
 
   useEffect(() => {
     if (fontsLoaded && ready) SplashScreen.hideAsync().catch(() => {});

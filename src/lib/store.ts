@@ -8,6 +8,7 @@ import {
   fetchDayTimes,
   tomorrowISO,
 } from "./prayer-times";
+import { totalMissed } from "./rollover";
 import {
   DayTimes,
   LogStatus,
@@ -16,6 +17,14 @@ import {
   PrayerWindow,
   WindowKey,
 } from "./types";
+
+/** A gap of this many unprocessed days switches on the welcome-back flow. */
+const DRIFT_DAYS = 7;
+
+export interface DriftState {
+  daysAway: number;
+  missedCount: number;
+}
 
 interface AppState {
   ready: boolean;
@@ -28,8 +37,16 @@ interface AppState {
   qadha: Record<Prayer, number>;
   /** Set briefly after logging to drive the reward moment. */
   celebrating: WindowKey | "qadha" | null;
+  /**
+   * Set when the user comes back after a long gap; rollover is held until
+   * they choose to bank the missed days or start fresh.
+   */
+  drift: DriftState | null;
+  /** A "Prayed ✓" tap that arrived before init finished. */
+  queuedLog: { key: WindowKey; date: string } | null;
 
   init: () => Promise<void>;
+  resolveDrift: (countQadha: boolean) => void;
   setCity: (city: string, country: string) => Promise<void>;
   logWindow: (w: PrayerWindow) => void;
   togglePrayer: (p: Prayer, w: PrayerWindow) => void;
@@ -59,11 +76,22 @@ export const useApp = create<AppState>((set, get) => ({
   logs: {},
   qadha: { fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 },
   celebrating: null,
+  drift: null,
+  queuedLog: null,
 
   init: async () => {
     try {
       db.initDb();
-      db.applyRollover(db.getPendingRollover(), true);
+
+      // A short gap rolls straight into the qadha bank. A long one means the
+      // user drifted — hold the rollover and let them choose a fresh start.
+      const pending = db.getPendingRollover();
+      let drift: DriftState | null = null;
+      if (pending.length >= DRIFT_DAYS) {
+        drift = { daysAway: pending.length, missedCount: totalMissed(pending) };
+      } else {
+        db.applyRollover(pending, true);
+      }
 
       // Resolve location: saved -> GPS -> fallback city.
       let loc: Loc | null = null;
@@ -112,15 +140,28 @@ export const useApp = create<AppState>((set, get) => ({
         tomorrow,
         logs: db.getLogsForDate(todayISO),
         qadha: db.getQadhaCounts(),
+        drift,
         ready: true,
         error: null,
       });
+
+      // A "Prayed ✓" tap from a cold start queued itself; apply it now.
+      const queued = get().queuedLog;
+      if (queued) {
+        set({ queuedLog: null });
+        get().logWindowByKey(queued.key, queued.date);
+      }
 
       const granted = await ensureNotificationSetup();
       if (granted) await scheduleDay(today);
     } catch (e: any) {
       set({ error: e?.message ?? "Something went wrong", ready: true });
     }
+  },
+
+  resolveDrift: (countQadha) => {
+    db.applyRollover(db.getPendingRollover(), countQadha);
+    set({ drift: null, qadha: db.getQadhaCounts() });
   },
 
   setCity: async (city, country) => {
@@ -159,6 +200,12 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   logWindowByKey: (key, date) => {
+    if (!get().ready) {
+      // Cold start from a notification action: today's times aren't loaded
+      // yet, so park the tap and let init() replay it.
+      set({ queuedLog: { key, date } });
+      return;
+    }
     const day = get().today;
     if (!day || date !== day.dateISO) return;
     const w = day.windows.find((x) => x.key === key);
